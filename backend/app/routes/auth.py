@@ -134,8 +134,8 @@ def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+samesite="none",
         max_age=30 * 60,
     )
 
@@ -143,8 +143,8 @@ def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+samesite="none",
         max_age=7 * 24 * 60 * 60,
     )
 
@@ -247,8 +247,8 @@ def refresh(
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+samesite="none",
         max_age=30 * 60,
     )
 
@@ -271,15 +271,15 @@ def logout(
     response.delete_cookie(
         key="access_token",
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+samesite="none",
     )
 
     response.delete_cookie(
         key="refresh_token",
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+samesite="none",
     )
 
     return {
@@ -461,8 +461,8 @@ async def google_callback(
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,
-            samesite="lax",
+            secure=True,
+samesite="none",
             max_age=30 * 60,
         )
 
@@ -474,8 +474,8 @@ async def google_callback(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,
-            samesite="lax",
+            secure=True,
+samesite="none",
             max_age=7 * 24 * 60 * 60,
         )
 
