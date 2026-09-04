@@ -18,7 +18,6 @@ from app.schemas.link_share import (
     PublicLinkAccessRequest,
     PublicLinkResponse,
 )
-
 from app.services.link_share_service import (
     create_public_link,
     access_public_link,
@@ -50,10 +49,7 @@ def create_share_route(
     )
 
 
-@router.get(
-    "",
-    response_model=list[ShareResponse],
-)
+@router.get("")
 def list_shares_route(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -94,6 +90,8 @@ def delete_share_route(
         share_id=share_id,
         owner_id=current_user.id,
     )
+
+
 # =========================
 # PUBLIC SHAREABLE LINK
 # =========================

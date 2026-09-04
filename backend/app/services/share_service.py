@@ -130,13 +130,64 @@ def list_my_shares(
     db: Session,
     user_id: UUID,
 ):
-    return (
+    shares = (
         db.query(Share)
         .filter(
             Share.shared_with_user_id == user_id
         )
         .all()
     )
+
+    result = []
+
+    for share in shares:
+        item = {
+            "id": str(share.id),
+            "file_id": str(share.file_id) if share.file_id else None,
+            "folder_id": str(share.folder_id) if share.folder_id else None,
+            "owner_id": str(share.owner_id),
+            "shared_with_user_id": str(share.shared_with_user_id),
+            "role": share.role,
+        }
+
+        owner = (
+            db.query(User)
+            .filter(User.id == share.owner_id)
+            .first()
+        )
+
+        item["owner_email"] = owner.email if owner else None
+        item["owner_name"] = owner.full_name if owner else None
+
+        if share.file_id:
+            file = (
+                db.query(File)
+                .filter(File.id == share.file_id)
+                .first()
+            )
+
+            if file:
+                item["name"] = file.name
+                item["original_name"] = file.original_name
+                item["mime_type"] = file.mime_type
+                item["size"] = file.size
+                item["storage_path"] = file.storage_path
+                item["is_deleted"] = file.is_deleted
+
+        if share.folder_id:
+            folder = (
+                db.query(Folder)
+                .filter(Folder.id == share.folder_id)
+                .first()
+            )
+
+            if folder:
+                item["name"] = folder.name
+                item["is_deleted"] = folder.is_deleted
+
+        result.append(item)
+
+    return result
 
 
 def delete_share(
