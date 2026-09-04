@@ -165,6 +165,8 @@ def create_download_url(
     file_id: UUID,
     user_id: UUID,
 ):
+    from app.models.share import Share
+
     file = (
         db.query(File)
         .filter(
@@ -180,7 +182,38 @@ def create_download_url(
             detail="File not found",
         )
 
-    if file.owner_id != user_id:
+    # Owner always has access.
+    has_access = file.owner_id == user_id
+
+    # Direct file share.
+    if not has_access:
+        direct_share = (
+            db.query(Share)
+            .filter(
+                Share.file_id == file_id,
+                Share.shared_with_user_id == user_id,
+            )
+            .first()
+        )
+
+        if direct_share:
+            has_access = True
+
+    # Folder share.
+    if not has_access and file.folder_id:
+        folder_share = (
+            db.query(Share)
+            .filter(
+                Share.folder_id == file.folder_id,
+                Share.shared_with_user_id == user_id,
+            )
+            .first()
+        )
+
+        if folder_share:
+            has_access = True
+
+    if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this file",
@@ -217,7 +250,6 @@ def create_download_url(
 
     except HTTPException:
         raise
-
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
