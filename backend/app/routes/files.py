@@ -168,9 +168,21 @@ def search_file_list(
     mime_type: str | None = None,
     folder_id: UUID | None = None,
     starred: bool | None = None,
+    sort_by: str = "name",
+    sort_order: str = "asc",
+    page: int = 1,
+    limit: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    allowed_sort_fields = {"name", "size", "date"}
+
+    if sort_by not in allowed_sort_fields:
+        sort_by = "name"
+
+    if sort_order.lower() not in {"asc", "desc"}:
+        sort_order = "asc"
+
     files = search_files(
         db=db,
         owner_id=current_user.id,
@@ -178,6 +190,10 @@ def search_file_list(
         mime_type=mime_type,
         folder_id=folder_id,
         starred=starred,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
     )
 
     return {
@@ -199,29 +215,11 @@ def search_file_list(
                 "current_version": file.current_version,
             }
             for file in files
-        ]
-    }
-
-    return {
-        "files": [
-            {
-                "id": str(file.id),
-                "name": file.name,
-                "original_name": file.original_name,
-                "mime_type": file.mime_type,
-                "size": file.size,
-                "storage_path": file.storage_path,
-                "folder_id": (
-                    str(file.folder_id)
-                    if file.folder_id
-                    else None
-                ),
-                "is_deleted": file.is_deleted,
-                "is_starred": file.is_starred,
-                "current_version": file.current_version,
-            }
-            for file in files
-        ]
+        ],
+        "page": page,
+        "limit": limit,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
     }
 
 

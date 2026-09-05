@@ -477,6 +477,10 @@ def search_files(
     mime_type: str | None = None,
     folder_id: UUID | None = None,
     starred: bool | None = None,
+    sort_by: str = "name",
+    sort_order: str = "asc",
+    page: int = 1,
+    limit: int = 20,
 ):
     filters = [
         File.owner_id == owner_id,
@@ -503,11 +507,28 @@ def search_files(
             File.is_starred == starred
         )
 
-    return (
-        db.query(File)
-        .filter(*filters)
-        .all()
-    )
+    query_builder = db.query(File).filter(*filters)
+
+    # Sorting
+    if sort_by == "size":
+        sort_column = File.size
+    elif sort_by == "date":
+        sort_column = File.created_at
+    else:
+        sort_column = File.name
+
+    if sort_order.lower() == "desc":
+        query_builder = query_builder.order_by(sort_column.desc())
+    else:
+        query_builder = query_builder.order_by(sort_column.asc())
+
+    # Pagination
+    page = max(page, 1)
+    limit = min(max(limit, 1), 100)
+
+    offset = (page - 1) * limit
+
+    return query_builder.offset(offset).limit(limit).all()
 def move_file(
     db: Session,
     file_id: UUID,
