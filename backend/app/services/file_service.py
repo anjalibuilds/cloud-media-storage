@@ -261,11 +261,12 @@ def rename_file(
     user_id: UUID,
     new_name: str,
 ):
+    from app.models.share import Share
+
     file = (
         db.query(File)
         .filter(
             File.id == file_id,
-            File.owner_id == user_id,
             File.is_deleted == False,
         )
         .first()
@@ -276,6 +277,36 @@ def rename_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
+
+    # Owner has full control.
+    if file.owner_id != user_id:
+        share = (
+            db.query(Share)
+            .filter(
+                Share.file_id == file_id,
+                Share.shared_with_user_id == user_id,
+                Share.role == "editor",
+            )
+            .first()
+        )
+
+        # Check folder-level editor permission too.
+        if not share and file.folder_id:
+            share = (
+                db.query(Share)
+                .filter(
+                    Share.folder_id == file.folder_id,
+                    Share.shared_with_user_id == user_id,
+                    Share.role == "editor",
+                )
+                .first()
+            )
+
+        if not share:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Editor permission required",
+            )
 
     new_name = new_name.strip()
 
@@ -298,17 +329,17 @@ def rename_file(
 
     return file
 
-
 def soft_delete_file(
     db: Session,
     file_id: UUID,
     user_id: UUID,
 ):
+    from app.models.share import Share
+
     file = (
         db.query(File)
         .filter(
             File.id == file_id,
-            File.owner_id == user_id,
             File.is_deleted == False,
         )
         .first()
@@ -320,6 +351,36 @@ def soft_delete_file(
             detail="File not found",
         )
 
+    # Owner has full control.
+    if file.owner_id != user_id:
+        share = (
+            db.query(Share)
+            .filter(
+                Share.file_id == file_id,
+                Share.shared_with_user_id == user_id,
+                Share.role == "editor",
+            )
+            .first()
+        )
+
+        # Check folder-level editor permission too.
+        if not share and file.folder_id:
+            share = (
+                db.query(Share)
+                .filter(
+                    Share.folder_id == file.folder_id,
+                    Share.shared_with_user_id == user_id,
+                    Share.role == "editor",
+                )
+                .first()
+            )
+
+        if not share:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Editor permission required",
+            )
+
     file.is_deleted = True
     file.deleted_at = datetime.utcnow()
 
@@ -327,7 +388,6 @@ def soft_delete_file(
     db.refresh(file)
 
     return file
-
 
 def restore_file(
     db: Session,
@@ -454,11 +514,12 @@ def move_file(
     folder_id: UUID | None,
     owner_id: UUID,
 ):
+    from app.models.share import Share
+
     file = (
         db.query(File)
         .filter(
             File.id == file_id,
-            File.owner_id == owner_id,
             File.is_deleted == False,
         )
         .first()
@@ -470,12 +531,49 @@ def move_file(
             detail="File not found",
         )
 
+    has_editor_access = file.owner_id == owner_id
+
+    if not has_editor_access:
+        share = (
+            db.query(Share)
+            .filter(
+                Share.file_id == file_id,
+                Share.shared_with_user_id == owner_id,
+                Share.role == "editor",
+            )
+            .first()
+        )
+
+        if share:
+            has_editor_access = True
+
+    if not has_editor_access and file.folder_id:
+        folder_share = (
+            db.query(Share)
+            .filter(
+                Share.folder_id == file.folder_id,
+                Share.shared_with_user_id == owner_id,
+                Share.role == "editor",
+            )
+            .first()
+        )
+
+        if folder_share:
+            has_editor_access = True
+
+    if not has_editor_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Editor permission required",
+        )
+
+    # Destination folder must belong to the file owner.
     if folder_id is not None:
         folder = (
             db.query(Folder)
             .filter(
                 Folder.id == folder_id,
-                Folder.owner_id == owner_id,
+                Folder.owner_id == file.owner_id,
                 Folder.is_deleted == False,
             )
             .first()
