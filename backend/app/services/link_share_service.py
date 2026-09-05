@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from secrets import token_urlsafe
 from uuid import UUID
-
+from app.core.storage import supabase, SUPABASE_STORAGE_BUCKET
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -181,14 +181,45 @@ def access_public_link(
                 detail="File not found",
             )
 
-        return {
-            "type": "file",
-            "file_id": str(file.id),
-            "name": file.name,
-            "mime_type": file.mime_type,
-            "size": file.size,
-            "storage_path": file.storage_path,
-        }
+        try:
+            result = (
+                supabase.storage
+                .from_(SUPABASE_STORAGE_BUCKET)
+                .create_signed_url(
+                    file.storage_path,
+                    60 * 10,
+                )
+            )
+
+            signed_url = (
+                result.get("signedURL")
+                or result.get("signedUrl")
+                or result.get("signed_url")
+            )
+
+            if not signed_url:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create signed public URL",
+                )
+
+            return {
+                "type": "file",
+                "file_id": str(file.id),
+                "name": file.name,
+                "mime_type": file.mime_type,
+                "size": file.size,
+                "download_url": signed_url,
+                "expires_in": 600,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create public file URL: {str(e)}",
+            )
 
     if link.folder_id:
         folder = (
@@ -216,7 +247,6 @@ def access_public_link(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Shared resource not found",
     )
-
 
 def deactivate_public_link(
     db: Session,
