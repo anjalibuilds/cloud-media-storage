@@ -153,18 +153,6 @@ def complete_upload(
         db.add(file)
         db.commit()
         db.refresh(file)
-        log_activity(
-    db=db,
-    user_id=owner_id,
-    activity_type="FILE_UPLOADED",
-    file_id=file.id,
-    folder_id=file.folder_id,
-    metadata={
-        "name": file.name,
-        "size": file.size,
-        "mime_type": file.mime_type,
-    },
-)
 
         return file
 
