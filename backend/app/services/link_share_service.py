@@ -99,6 +99,21 @@ def create_public_link(
     db.add(link)
     db.commit()
     db.refresh(link)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="PUBLIC_LINK_CREATED",
+    file_id=link.file_id,
+    folder_id=link.folder_id,
+    metadata={
+        "expires_at": (
+            link.expires_at.isoformat()
+            if link.expires_at
+            else None
+        ),
+        "has_password": bool(link.password_hash),
+    },
+)
 
     return link
 

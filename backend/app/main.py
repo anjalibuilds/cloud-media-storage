@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.routes.auth import router as auth_router
 from app.routes.files import router as files_router
 from app.routes.folders import router as folders_router
+from app.routes import activities
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -47,6 +48,7 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(folders_router)
 app.include_router(shares_router)
+app.include_router(activities.router)
 @app.get("/")
 def root():
     return {

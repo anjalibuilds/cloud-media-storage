@@ -17,6 +17,9 @@ import {
   Download,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
+  Pencil,
+  FolderPlus,
+  Move,
 } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +30,14 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
 
   const [activeView, setActiveView] = useState("drive");
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [breadcrumb, setBreadcrumb] = useState([]);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [movingFolder, setMovingFolder] = useState(null);
+  const [moveTargetId, setMoveTargetId] = useState("");
+  const [folderActionLoading, setFolderActionLoading] = useState(false);
 
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
@@ -66,11 +77,27 @@ const [starredLoading, setStarredLoading] = useState(false);
     try {
       const [filesResponse, foldersResponse] = await Promise.all([
         api.get("/files"),
-        api.get("/folders"),
+        api.get("/folders", {
+          params: { parent_id: currentFolderId || undefined },
+        }),
       ]);
 
-      setFiles(filesResponse.data?.files || []);
+      const allFiles = filesResponse.data?.files || [];
+      setFiles(
+        allFiles.filter((file) =>
+          currentFolderId ? file.folder_id === currentFolderId : !file.folder_id
+        )
+      );
       setFolders(foldersResponse.data || []);
+
+      if (currentFolderId) {
+        const breadcrumbResponse = await api.get(
+          `/folders/${currentFolderId}/breadcrumb`
+        );
+        setBreadcrumb(breadcrumbResponse.data || []);
+      } else {
+        setBreadcrumb([]);
+      }
     } catch (error) {
       console.error("Failed to load drive:", error);
       setFiles([]);
@@ -120,7 +147,7 @@ const [starredLoading, setStarredLoading] = useState(false);
         params: {
           query: search.trim() || undefined,
           mime_type: mimeType || undefined,
-          folder_id: folderFilter || undefined,
+          folder_id: folderFilter || currentFolderId || undefined,
           sort_by: sortBy,
           sort_order: sortOrder,
           page: targetPage,
@@ -196,7 +223,7 @@ const [starredLoading, setStarredLoading] = useState(false);
     if (activeView === "trash") {
       loadTrashFiles();
     }
-  }, [activeView]);
+  }, [activeView, currentFolderId]);
 
   useEffect(() => {
     if (activeView !== "drive") return;
@@ -207,7 +234,103 @@ const [starredLoading, setStarredLoading] = useState(false);
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [search, mimeType, folderFilter, sortBy, sortOrder, activeView]);
+  }, [search, mimeType, folderFilter, sortBy, sortOrder, activeView, currentFolderId]);
+
+  // =========================
+  // FOLDER MANAGEMENT
+  // =========================
+
+  const openCreateFolder = () => {
+    setEditingFolder(null);
+    setFolderName("");
+    setShowFolderModal(true);
+  };
+
+  const openRenameFolder = (folder) => {
+    setEditingFolder(folder);
+    setFolderName(folder.name);
+    setShowFolderModal(true);
+  };
+
+  const saveFolder = async (event) => {
+    event.preventDefault();
+    const name = folderName.trim();
+    if (!name) return;
+
+    setFolderActionLoading(true);
+    try {
+      if (editingFolder) {
+        await api.patch(`/folders/${editingFolder.id}`, { name });
+      } else {
+        await api.post("/folders", {
+          name,
+          parent_id: currentFolderId,
+        });
+      }
+
+      setShowFolderModal(false);
+      setFolderName("");
+      setEditingFolder(null);
+      await loadDrive();
+    } catch (error) {
+      console.error("Folder save failed:", error);
+      alert(error.response?.data?.detail || "Unable to save folder");
+    } finally {
+      setFolderActionLoading(false);
+    }
+  };
+
+  const deleteFolder = async (folder) => {
+    if (!window.confirm(`Move folder "${folder.name}" to Trash?`)) return;
+
+    try {
+      await api.delete(`/folders/${folder.id}`);
+      await loadDrive();
+    } catch (error) {
+      console.error("Folder delete failed:", error);
+      alert(error.response?.data?.detail || "Unable to delete folder");
+    }
+  };
+
+  const openMoveFolder = (folder) => {
+    setMovingFolder(folder);
+    setMoveTargetId(folder.parent_id || "__root__");
+  };
+
+  const moveFolder = async (event) => {
+    event.preventDefault();
+    if (!movingFolder || !moveTargetId || moveTargetId === movingFolder.id) return;
+
+    try {
+      await api.patch(`/folders/${movingFolder.id}`, {
+        parent_id: moveTargetId === "__root__" ? null : moveTargetId,
+      });
+      setMovingFolder(null);
+      setMoveTargetId("");
+      await loadDrive();
+    } catch (error) {
+      console.error("Folder move failed:", error);
+      alert(error.response?.data?.detail || "Unable to move folder");
+    }
+  };
+
+  const enterFolder = (folder) => {
+    setSearch("");
+    setMimeType("");
+    setFolderFilter("");
+    setPage(1);
+    setCurrentFolderId(folder.id);
+    setActiveView("drive");
+  };
+
+  const goToBreadcrumb = (folderId) => {
+    setSearch("");
+    setMimeType("");
+    setFolderFilter("");
+    setPage(1);
+    setCurrentFolderId(folderId || null);
+    setActiveView("drive");
+  };
 
   // =========================
   // LOGOUT
@@ -455,22 +578,29 @@ const toggleStar = async (file) => {
         {/* CONTENT */}
         <section className="flex-1 p-8">
           {/* BREADCRUMB */}
-          <div className="mb-7 flex items-center gap-2 text-sm">
+          <div className="mb-7 flex flex-wrap items-center gap-2 text-sm">
             <button
-              onClick={() => setActiveView("drive")}
+              onClick={() => goToBreadcrumb(null)}
               className="font-semibold text-slate-900 hover:underline"
             >
               My Drive
             </button>
 
-            <ChevronRight size={16} className="text-slate-400" />
-
-            <span className="text-slate-500">
-              {activeView === "drive"
-                ? "All files"
-                : activeView.charAt(0).toUpperCase() +
-                  activeView.slice(1)}
-            </span>
+            {breadcrumb.map((item) => (
+              <div key={item.id} className="flex items-center gap-2">
+                <ChevronRight size={16} className="text-slate-400" />
+                <button
+                  onClick={() => goToBreadcrumb(item.id)}
+                  className={`font-medium hover:underline ${
+                    item.id === currentFolderId
+                      ? "text-slate-900"
+                      : "text-slate-500"
+                  }`}
+                >
+                  {item.name}
+                </button>
+              </div>
+            ))}
           </div>
 
           {activeView === "drive" && (
@@ -534,11 +664,13 @@ const toggleStar = async (file) => {
           )}
 
           {/* TITLE */}
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-6 flex items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold">
                 {activeView === "drive"
-                  ? "My Drive"
+                  ? currentFolderId
+                    ? breadcrumb[breadcrumb.length - 1]?.name || "Folder"
+                    : "My Drive"
                   : activeView.charAt(0).toUpperCase() +
                     activeView.slice(1)}
               </h2>
@@ -546,18 +678,31 @@ const toggleStar = async (file) => {
               <p className="mt-1 text-sm text-slate-500">
                 {activeView === "shared"
                   ? "Files shared with you"
+                  : activeView === "drive"
+                  ? currentFolderId
+                    ? "Manage files in this folder"
+                    : "Manage your files and folders"
                   : "Manage your files and folders"}
               </p>
             </div>
 
             {activeView === "drive" && (
-              <button
-                onClick={() => setShowUpload(true)}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-              >
-                <Upload size={17} />
-                Upload
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={openCreateFolder}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                >
+                  <FolderPlus size={17} />
+                  New Folder
+                </button>
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  <Upload size={17} />
+                  Upload
+                </button>
+              </div>
             )}
           </div>
 
@@ -829,23 +974,46 @@ const toggleStar = async (file) => {
                     {filteredFolders.map((folder) => (
                       <div
                         key={folder.id}
-                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"
+                        className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:border-slate-300 hover:shadow-sm"
                       >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100">
-                          <Folder
-                            size={21}
-                            className="text-slate-600"
-                          />
-                        </div>
+                        <button
+                          onClick={() => enterFolder(folder)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                            <Folder size={21} className="text-slate-600" />
+                          </div>
 
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
-                            {folder.name}
-                          </p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">
+                              {folder.name}
+                            </p>
+                            <p className="text-xs text-slate-400">Folder</p>
+                          </div>
+                        </button>
 
-                          <p className="text-xs text-slate-400">
-                            Folder
-                          </p>
+                        <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            onClick={() => openRenameFolder(folder)}
+                            title="Rename folder"
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => openMoveFolder(folder)}
+                            title="Move folder"
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
+                            <Move size={16} />
+                          </button>
+                          <button
+                            onClick={() => deleteFolder(folder)}
+                            title="Move folder to Trash"
+                            className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1005,9 +1173,143 @@ const toggleStar = async (file) => {
             </div>
 
             <UploadDropzone
+              folderId={currentFolderId}
               onUploadComplete={handleUploadComplete}
             />
           </div>
+        </div>
+      )}
+
+      {/* =========================
+          FOLDER CREATE / RENAME MODAL
+      ========================= */}
+
+      {showFolderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6">
+          <form
+            onSubmit={saveFolder}
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">
+                  {editingFolder ? "Rename Folder" : "New Folder"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {editingFolder
+                    ? "Update the folder name."
+                    : "Create a folder in the current location."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFolderModal(false)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <input
+              autoFocus
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="Folder name"
+              maxLength={255}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-400"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFolderModal(false)}
+                className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!folderName.trim() || folderActionLoading}
+                className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {folderActionLoading
+                  ? "Saving..."
+                  : editingFolder
+                  ? "Save Changes"
+                  : "Create Folder"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* =========================
+          FOLDER MOVE MODAL
+      ========================= */}
+
+      {movingFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6">
+          <form
+            onSubmit={moveFolder}
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Move Folder</h2>
+                <p className="mt-1 truncate text-sm text-slate-500">
+                  {movingFolder.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMovingFolder(null)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Destination folder
+            </label>
+            <select
+              value={moveTargetId}
+              onChange={(e) => setMoveTargetId(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="">Select a folder</option>
+              <option value="__root__">My Drive (Root)</option>
+              {folders
+                .filter((folder) => folder.id !== movingFolder.id)
+                .map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+            </select>
+
+            <p className="mt-2 text-xs text-slate-400">
+              Choose another visible folder as the destination.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMovingFolder(null)}
+                className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!moveTargetId}
+                className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Move size={16} />
+                Move
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

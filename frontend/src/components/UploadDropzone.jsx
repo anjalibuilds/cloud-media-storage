@@ -4,7 +4,7 @@ import axios from "axios";
 import { UploadCloud, X, CheckCircle, AlertCircle } from "lucide-react";
 import api from "../services/api";
 
-export default function UploadDropzone({ onUploadComplete }) {
+export default function UploadDropzone({ onUploadComplete, folderId = null }) {
   const [uploads, setUploads] = useState([]);
 
   const updateUpload = (id, data) => {
@@ -64,6 +64,7 @@ export default function UploadDropzone({ onUploadComplete }) {
         filename: file.name,
         mime_type: file.type,
         size: file.size,
+        folder_id: folderId || null,
       });
 
       updateUpload(uploadId, {

@@ -132,24 +132,47 @@ def update_folder(
 
         folder.name = data.name
 
-    if data.parent_id is not None:
+    # Pydantic tracks whether parent_id was explicitly supplied, which lets
+    # the API move a folder back to the root with parent_id=null.
+    if "parent_id" in data.model_fields_set:
         if data.parent_id == folder_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Folder cannot be its own parent",
             )
 
-        parent = get_folder(
-            db,
-            data.parent_id,
-            owner_id,
-        )
-
-        if parent.id == folder.id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid parent folder",
+        if data.parent_id is not None:
+            parent = get_folder(
+                db,
+                data.parent_id,
+                owner_id,
             )
+
+            if parent.id == folder.id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent folder",
+                )
+
+            # Prevent moving a folder inside one of its descendants.
+            current = parent
+            while current:
+                if current.parent_id is None:
+                    break
+                if current.parent_id == folder.id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Folder cannot be moved inside its own descendant",
+                    )
+                current = (
+                    db.query(Folder)
+                    .filter(
+                        Folder.id == current.parent_id,
+                        Folder.owner_id == owner_id,
+                        Folder.is_deleted == False,
+                    )
+                    .first()
+                )
 
         folder.parent_id = data.parent_id
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.file import File
 from app.core.storage import supabase, SUPABASE_STORAGE_BUCKET
 from app.models.file import File
+from app.services.activity_service import log_activity
 from app.models.folder import Folder
 from app.schemas.file import (
     InitUploadRequest,
@@ -152,6 +153,18 @@ def complete_upload(
         db.add(file)
         db.commit()
         db.refresh(file)
+        log_activity(
+    db=db,
+    user_id=owner_id,
+    activity_type="FILE_UPLOADED",
+    file_id=file.id,
+    folder_id=file.folder_id,
+    metadata={
+        "name": file.name,
+        "size": file.size,
+        "mime_type": file.mime_type,
+    },
+)
 
         return file
 
@@ -326,6 +339,15 @@ def rename_file(
 
     db.commit()
     db.refresh(file)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="FILE_RENAMED",
+    file_id=file.id,
+    metadata={
+        "name": file.name,
+    },
+)
 
     return file
 
@@ -386,6 +408,15 @@ def soft_delete_file(
 
     db.commit()
     db.refresh(file)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="FILE_DELETED",
+    file_id=file.id,
+    metadata={
+        "name": file.name,
+    },
+)
 
     return file
 
@@ -415,6 +446,15 @@ def restore_file(
 
     db.commit()
     db.refresh(file)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="FILE_RESTORED",
+    file_id=file.id,
+    metadata={
+        "name": file.name,
+    },
+)
 
     return file
 
@@ -513,7 +553,7 @@ def search_files(
     if sort_by == "size":
         sort_column = File.size
     elif sort_by == "date":
-        sort_column = File.created_at
+        sort_column = File.uploaded_at
     else:
         sort_column = File.name
 
@@ -637,6 +677,15 @@ def star_file(
 
     db.commit()
     db.refresh(file)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="FILE_STARRED",
+    file_id=file.id,
+    metadata={
+        "name": file.name,
+    },
+)
 
     return file
 
@@ -665,6 +714,15 @@ def unstar_file(
 
     db.commit()
     db.refresh(file)
+    log_activity(
+    db=db,
+    user_id=user_id,
+    activity_type="FILE_UNSTARRED",
+    file_id=file.id,
+    metadata={
+        "name": file.name,
+    },
+)
 
     return file
 

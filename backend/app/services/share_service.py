@@ -8,7 +8,7 @@ from app.models.user import User
 from app.models.file import File
 from app.models.folder import Folder
 from app.schemas.share import ShareCreate
-
+from app.services.activity_service import log_activity
 
 VALID_ROLES = {"viewer", "editor"}
 
@@ -109,6 +109,17 @@ def create_share(
         existing.role = data.role
         db.commit()
         db.refresh(existing)
+        log_activity(
+    db=db,
+    user_id=owner_id,
+    activity_type="FILE_SHARED",
+    file_id=data.file_id,
+    folder_id=data.folder_id,
+    metadata={
+        "shared_with_email": data.email,
+        "role": data.role,
+    },
+)
         return existing
 
     share = Share(
